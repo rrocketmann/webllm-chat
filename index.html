@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Local WebLLM Chat</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Local WebLLM Chat</h1>
+          <p>Runs fully in your browser with WebGPU.</p>
+        </div>
+        <button id="clear-chat" class="ghost-btn" type="button">Clear chat</button>
+      </header>
+
+      <section class="layout">
+        <aside class="panel settings">
+          <h2>Model</h2>
+          <label>
+            <span>Choose model (&lt;= 4B)</span>
+            <select id="model-select"></select>
+          </label>
+
+          <label>
+            <span>Temperature <strong id="temperature-value">0.7</strong></span>
+            <input id="temperature" type="range" min="0" max="2" step="0.1" value="0.7" />
+          </label>
+
+          <label>
+            <span>Max new tokens</span>
+            <input id="max-tokens" type="number" min="32" max="1024" step="32" value="256" />
+          </label>
+
+          <div class="status-wrap">
+            <p id="status-text">Checking browser capabilities...</p>
+            <div class="progress">
+              <div id="progress-bar" class="progress-fill"></div>
+            </div>
+          </div>
+        </aside>
+
+        <section class="panel chat" aria-live="polite">
+          <div id="messages" class="messages"></div>
+
+          <form id="composer" class="composer">
+            <textarea
+              id="prompt"
+              rows="3"
+              placeholder="Ask anything..."
+              required
+            ></textarea>
+            <button id="send" type="submit">Send</button>
+          </form>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
