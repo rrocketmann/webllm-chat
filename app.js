@@ -150,6 +150,15 @@ function bindEvents() {
     ui.temperatureValue.textContent = ui.temperature.value;
   });
 
+  ui.prompt.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      if (!state.generating && !state.loading) {
+        ui.form.requestSubmit();
+      }
+    }
+  });
+
   ui.modelSelect.addEventListener("change", () => {
     state.engine = null;
     state.loadedModel = null;

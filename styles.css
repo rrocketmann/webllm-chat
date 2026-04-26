@@ -103,6 +103,40 @@ textarea {
   resize: vertical;
 }
 
+input[type="range"] {
+  appearance: none;
+  background: transparent;
+  padding: 0;
+  height: 1.2rem;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  background: #d7e8dc;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -4px;
+  background: var(--brand);
+  border: 1px solid #26613d;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 6px;
+  background: #d7e8dc;
+  border: none;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--brand);
+  border: 1px solid #26613d;
+}
+
 .ghost-btn {
   border: 1px solid var(--line);
   padding: 0.5rem 0.8rem;
