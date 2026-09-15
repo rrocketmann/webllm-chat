@@ -1,1 +1,8 @@
-<img width="1087" height="1071" alt="image" src="https://github.com/user-attachments/assets/046fa6b7-78f0-4334-b56c-95821cba5b66" />
+# WebLLM Chat
+
+On-device chat in the browser with [WebLLM](https://github.com/mlc-ai/web-llm). Models download locally, and chats, memories, and settings are stored in cookies.
+
+- Select a model to load it
+- Multiple chats
+- Optional memory and web search skills
+- Light or dark theme follows the system
