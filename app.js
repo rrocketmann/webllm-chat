@@ -26,7 +26,6 @@ const FALLBACK_MODELS = [
 const $ = (id) => document.getElementById(id);
 const ui = {
   model: $("model"),
-  chats: $("chats"),
   memory: $("memory"),
   status: $("status"),
   progress: $("progress"),
@@ -34,8 +33,6 @@ const ui = {
   form: $("form"),
   prompt: $("prompt"),
   send: $("send"),
-  newChat: $("new-chat"),
-  deleteChat: $("delete-chat"),
 };
 
 let webllm = null;
@@ -46,13 +43,8 @@ const state = {
   generating: false,
   loadToken: 0,
   model: "",
-  chats: [],
-  activeId: null,
+  messages: [],
 };
-
-function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-}
 
 function writeCookie(name, value, maxAge = 31536000) {
   document.cookie = `${name}=${value};path=/;max-age=${maxAge};SameSite=Lax`;
@@ -66,23 +58,18 @@ function cookieValue(name) {
 function save() {
   const payload = {
     model: state.model,
-    activeId: state.activeId,
     memory: ui.memory.value,
-    chats: state.chats.map((chat) => ({
-      id: chat.id,
-      title: chat.title,
-      messages: chat.messages.slice(-40).map((m) => ({
-        role: m.role,
-        content: String(m.content).slice(0, 4000),
-      })),
+    messages: state.messages.slice(-40).map((m) => ({
+      role: m.role,
+      content: String(m.content).slice(0, 4000),
     })),
   };
   const raw = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
   const size = 3200;
   const n = Math.ceil(raw.length / size);
   if (n > 18) {
-    if (state.chats.length <= 1) return;
-    state.chats = state.chats.slice(-Math.max(1, state.chats.length - 1));
+    if (state.messages.length <= 2) return;
+    state.messages = state.messages.slice(2);
     return save();
   }
   writeCookie("wlcn", String(n));
@@ -104,6 +91,7 @@ function loadSaved() {
 
 function setStatus(text, progress) {
   ui.status.textContent = text;
+  ui.status.classList.toggle("ok", /^Ready:/.test(text));
   if (typeof progress === "number") ui.progress.value = progress;
 }
 
@@ -111,10 +99,6 @@ function setBusy(busy) {
   ui.send.disabled = busy;
   ui.prompt.disabled = busy;
   ui.model.disabled = busy;
-}
-
-function activeChat() {
-  return state.chats.find((c) => c.id === state.activeId) || null;
 }
 
 function modelIds() {
@@ -144,55 +128,63 @@ function populateModels() {
   state.model = pick;
 }
 
-function renderChats() {
-  ui.chats.innerHTML = "";
-  for (const chat of state.chats) {
-    const opt = document.createElement("option");
-    opt.value = chat.id;
-    opt.textContent = chat.title || "Chat";
-    ui.chats.appendChild(opt);
-  }
-  if (state.activeId) ui.chats.value = state.activeId;
+function visibleAnswer(text) {
+  const close = text.lastIndexOf("</think>");
+  if (close !== -1) return text.slice(close + 8).replace(/<\/?think>/g, "").trim();
+  return text.replace(/<think>[\s\S]*$/g, "").replace(/<\/?think>/g, "").trim();
+}
+
+function expectsThink() {
+  return /qwen3|deepseek-r1|r1-distill|qwq/i.test(state.loadedModel || state.model || "");
+}
+
+function stillThinking(text, done) {
+  if (text.includes("</think>")) return false;
+  if (text.includes("<think>")) return true;
+  return !done && expectsThink();
 }
 
 function renderLog() {
-  const chat = activeChat();
   ui.log.innerHTML = "";
-  for (const msg of chat?.messages || []) {
-    const p = document.createElement("p");
-    const who = document.createElement("b");
-    who.textContent = msg.role === "user" ? "You" : "Assistant";
-    p.append(who, document.createTextNode("\n" + msg.content));
-    ui.log.appendChild(p);
+  for (const msg of state.messages) {
+    addLine(msg.role, visibleAnswer(msg.content) || msg.content, false);
   }
-  ui.log.scrollTop = ui.log.scrollHeight;
 }
 
-function addLine(role, content) {
-  const chat = activeChat();
-  if (!chat) return;
-  chat.messages.push({ role, content });
-  if (role === "user" && chat.title === "Chat") {
-    chat.title = content.slice(0, 40);
-    renderChats();
-  }
+function addLine(role, content, persist = true) {
   const p = document.createElement("p");
   const who = document.createElement("b");
   who.textContent = role === "user" ? "You" : "Assistant";
   p.append(who, document.createTextNode("\n" + content));
   ui.log.appendChild(p);
+  if (persist) {
+    state.messages.push({ role, content });
+    save();
+  }
   ui.log.scrollTop = ui.log.scrollHeight;
-  save();
   return p;
 }
 
-function createChat() {
-  const chat = { id: uid(), title: "Chat", messages: [] };
-  state.chats.push(chat);
-  state.activeId = chat.id;
-  save();
-  renderChats();
-  renderLog();
+function addAssistantShell() {
+  const p = document.createElement("p");
+  const who = document.createElement("b");
+  who.textContent = "Assistant";
+  const think = document.createElement("div");
+  think.className = "thinking";
+  think.hidden = true;
+  const label = document.createElement("span");
+  label.className = "thinking-label";
+  label.textContent = "Thinking";
+  const dots = document.createElement("span");
+  dots.className = "dots";
+  const bar = document.createElement("span");
+  bar.className = "bar";
+  think.append(label, dots, bar);
+  const answer = document.createElement("span");
+  answer.className = "answer";
+  p.append(who, think, answer);
+  ui.log.appendChild(p);
+  return { think, answer };
 }
 
 function memories() {
@@ -287,8 +279,18 @@ function systemPrompt(searchText) {
   return text;
 }
 
+function paintAssistant(shell, raw, done = false) {
+  const thinking = stillThinking(raw, done);
+  const closed = raw.includes("</think>") || raw.includes("<think>");
+  const answer = visibleAnswer(raw);
+  const showAnswer = thinking ? "" : answer || raw.trim();
+  shell.think.hidden = !thinking && !closed;
+  shell.think.classList.toggle("done", !thinking && closed);
+  shell.think.querySelector(".thinking-label").textContent = thinking ? "Thinking" : "Thought";
+  shell.answer.textContent = showAnswer ? "\n" + showAnswer : "";
+}
+
 async function sendPrompt(prompt) {
-  const chat = activeChat() || (createChat(), activeChat());
   state.generating = true;
   setBusy(true);
   addLine("user", prompt);
@@ -306,9 +308,7 @@ async function sendPrompt(prompt) {
   setStatus("Generating…");
   const messages = [
     { role: "system", content: systemPrompt(searchText) },
-    ...chat.messages
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .map((m) => ({ role: m.role, content: m.content })),
+    ...state.messages.map((m) => ({ role: m.role, content: m.content })),
   ];
 
   const stream = await state.engine.chat.completions.create({
@@ -316,18 +316,21 @@ async function sendPrompt(prompt) {
     temperature: 0.7,
     max_tokens: 512,
     stream: true,
-    enable_thinking: false,
+    enable_thinking: true,
   });
 
-  const line = addLine("assistant", "");
-  let reply = "";
+  const shell = addAssistantShell();
+  let raw = "";
   for await (const chunk of stream) {
-    reply += chunk.choices?.[0]?.delta?.content || "";
-    line.lastChild.textContent = "\n" + (reply || "…");
+    raw += chunk.choices?.[0]?.delta?.content || "";
+    paintAssistant(shell, raw, false);
+    ui.log.scrollTop = ui.log.scrollHeight;
   }
-  reply = reply.trim() || "(no response)";
-  line.lastChild.textContent = "\n" + reply;
-  chat.messages[chat.messages.length - 1].content = reply;
+
+  const answer = visibleAnswer(raw) || raw.trim() || "(no response)";
+  paintAssistant(shell, raw, true);
+  if (!shell.answer.textContent.trim()) shell.answer.textContent = "\n" + answer;
+  state.messages.push({ role: "assistant", content: answer });
   save();
   setStatus("Ready: " + state.loadedModel, 1);
   state.generating = false;
@@ -346,26 +349,6 @@ function bind() {
       state.loading = false;
       setBusy(false);
     }
-  });
-
-  ui.chats.addEventListener("change", () => {
-    state.activeId = ui.chats.value;
-    save();
-    renderLog();
-  });
-
-  ui.newChat.addEventListener("click", () => {
-    createChat();
-    ui.prompt.focus();
-  });
-
-  ui.deleteChat.addEventListener("click", () => {
-    state.chats = state.chats.filter((c) => c.id !== state.activeId);
-    if (!state.chats.length) createChat();
-    else state.activeId = state.chats.at(-1).id;
-    save();
-    renderChats();
-    renderLog();
   });
 
   ui.memory.addEventListener("change", save);
@@ -400,13 +383,15 @@ function init() {
   const saved = loadSaved();
   if (saved) {
     state.model = saved.model || "";
-    state.chats = Array.isArray(saved.chats) ? saved.chats : [];
-    state.activeId = saved.activeId || state.chats[0]?.id || null;
     ui.memory.value = saved.memory || "";
+    if (Array.isArray(saved.messages)) state.messages = saved.messages;
+    else if (Array.isArray(saved.chats)) {
+      const chat =
+        saved.chats.find((c) => c.id === saved.activeId) || saved.chats.at(-1) || { messages: [] };
+      state.messages = chat.messages || [];
+    }
   }
-  if (!state.chats.length) createChat();
   populateModels();
-  renderChats();
   renderLog();
   bind();
 

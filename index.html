@@ -9,26 +9,24 @@
   </head>
   <body>
     <h1>WebLLM Chat</h1>
-    <p>Local model in the browser. Chats and memory are saved in cookies. Web search runs on each question.</p>
+    <p>
+      Local model in the browser.
+      <span class="hint">Memory is saved in cookies.</span>
+      Web search runs on each question.
+    </p>
 
     <p>
       Model
       <select id="model"></select>
+      <span class="hint">loads when you pick it</span>
     </p>
     <p>
-      Chat
-      <select id="chats"></select>
-      <button type="button" id="new-chat">New chat</button>
-      <button type="button" id="delete-chat">Delete</button>
-    </p>
-    <p>
-      Memory (one fact per line)<br />
+      Memory <span class="hint">(one fact per line)</span><br />
       <textarea id="memory" rows="3" placeholder="I live in …"></textarea>
     </p>
     <p id="status">Checking browser…</p>
     <progress id="progress" value="0" max="1"></progress>
 
-    <hr />
     <div id="log"></div>
 
     <form id="form">
