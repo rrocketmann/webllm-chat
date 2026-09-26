@@ -33,6 +33,7 @@ const ui = {
   form: $("form"),
   prompt: $("prompt"),
   send: $("send"),
+  clear: $("clear"),
 };
 
 let webllm = null;
@@ -41,6 +42,7 @@ const state = {
   loadedModel: null,
   loading: false,
   generating: false,
+  turn: 0,
   loadToken: 0,
   model: "",
   messages: [],
@@ -290,7 +292,23 @@ function paintAssistant(shell, raw, done = false) {
   shell.answer.textContent = showAnswer ? "\n" + showAnswer : "";
 }
 
+function clearHistory() {
+  state.turn += 1;
+  state.generating = false;
+  state.messages = [];
+  ui.memory.value = "";
+  ui.log.innerHTML = "";
+  if (!state.loading) {
+    setBusy(false);
+    if (state.loadedModel) setStatus("Ready: " + state.loadedModel, 1);
+  }
+  save();
+  state.engine?.interruptGenerate?.();
+  state.engine?.resetChat?.();
+}
+
 async function sendPrompt(prompt) {
+  const turnId = ++state.turn;
   state.generating = true;
   setBusy(true);
   addLine("user", prompt);
@@ -301,9 +319,11 @@ async function sendPrompt(prompt) {
     try {
       searchText = await webSearch(prompt);
     } catch (err) {
+      if (turnId !== state.turn) return;
       searchText = "Search failed: " + (err?.message || err);
     }
   }
+  if (turnId !== state.turn) return;
 
   setStatus("Generating…");
   const messages = [
@@ -311,21 +331,35 @@ async function sendPrompt(prompt) {
     ...state.messages.map((m) => ({ role: m.role, content: m.content })),
   ];
 
-  const stream = await state.engine.chat.completions.create({
-    messages,
-    temperature: 0.7,
-    max_tokens: 512,
-    stream: true,
-    enable_thinking: true,
-  });
+  let stream;
+  try {
+    stream = await state.engine.chat.completions.create({
+      messages,
+      temperature: 0.7,
+      max_tokens: 512,
+      stream: true,
+      enable_thinking: true,
+    });
+  } catch (err) {
+    if (turnId !== state.turn) return;
+    throw err;
+  }
+  if (turnId !== state.turn) return;
 
   const shell = addAssistantShell();
   let raw = "";
-  for await (const chunk of stream) {
-    raw += chunk.choices?.[0]?.delta?.content || "";
-    paintAssistant(shell, raw, false);
-    ui.log.scrollTop = ui.log.scrollHeight;
+  try {
+    for await (const chunk of stream) {
+      if (turnId !== state.turn) return;
+      raw += chunk.choices?.[0]?.delta?.content || "";
+      paintAssistant(shell, raw, false);
+      ui.log.scrollTop = ui.log.scrollHeight;
+    }
+  } catch (err) {
+    if (turnId !== state.turn) return;
+    throw err;
   }
+  if (turnId !== state.turn) return;
 
   const answer = visibleAnswer(raw) || raw.trim() || "(no response)";
   paintAssistant(shell, raw, true);
@@ -352,6 +386,7 @@ function bind() {
   });
 
   ui.memory.addEventListener("change", save);
+  ui.clear.addEventListener("click", clearHistory);
 
   ui.prompt.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
